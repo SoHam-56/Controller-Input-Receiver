@@ -131,3 +131,4 @@ Contributions to improve the project are welcome. Please follow these steps:
 
 ## Acknowledgments
 - SDL2 library developers
+- My mental peace
