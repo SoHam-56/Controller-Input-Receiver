@@ -1,6 +1,6 @@
 #include <iostream>
 #include <SDL.h>
-//#include "WifiSend.h"
+#include "WifiSend.h"
 
 
 int main(int argc, char* argv[])
@@ -8,12 +8,12 @@ int main(int argc, char* argv[])
 
 	SDL_Init(SDL_INIT_JOYSTICK);
 
-	/*if (SDL_NumJoysticks() < 1)
+	if (SDL_NumJoysticks() < 1)
 		std::cout << "Disconnected" << '\n';
 	else
 	{
 		SDL_Joystick* joystick = SDL_JoystickOpen(0);
-	}*/
+	}
 
 
 	//SDL Declarations
@@ -38,7 +38,7 @@ int main(int argc, char* argv[])
 		std::cout << "Y-Axis: " << y << "\n";
 		std::cout << "X-Axis: " << x << "\n";
 
-		//Send(data);
+		Send(data);
 		SDL_Delay(500);
 	}
 
