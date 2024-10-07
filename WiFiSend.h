@@ -1,57 +1,100 @@
+#ifndef WIFI_SEND_H
+#define WIFI_SEND_H
+
 #include <iostream>
+#include <stdexcept>
+#include <array>
 #include <winsock2.h>
-#include <ws2tcpip.h>  // for inet_pton()
+#include <ws2tcpip.h>
 
 #pragma comment(lib, "ws2_32.lib")
 
-using namespace std;
+class WifiSender {
+private:
+    static constexpr const char* ESP32_IP = "192.168.4.1";
+    static constexpr int ESP32_PORT = 80;
+    static constexpr int DATA_SIZE = 3;
+    static constexpr int BYTES_PER_INT = sizeof(int);
 
-int Send(int in[]) {
-	// Initialize Winsock
-	WSADATA wsaData;
-	int iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
-	if (iResult != 0) {
-		cout << "WSAStartup failed: " << iResult << endl;
-		return 1;
-	}
+    WSADATA wsaData;
+    SOCKET sock;
+    sockaddr_in addr;
 
-	// Create a socket
-	SOCKET sock = socket(AF_INET, SOCK_STREAM, 0);
-	if (sock == INVALID_SOCKET) {
-		cout << "Failed to create socket: " << WSAGetLastError() << endl;
-		WSACleanup();
-		return 1;
-	}
+    void initializeWinsock() {
+        int result = WSAStartup(MAKEWORD(2, 2), &wsaData);
+        if (result != 0) {
+            throw std::runtime_error("WSAStartup failed: " + std::to_string(result));
+        }
+    }
 
-	// Specify the IP address and port of the ESP32 board
-	struct sockaddr_in addr;
-	addr.sin_family = AF_INET;
-	addr.sin_port = htons(80);
-	inet_pton(AF_INET, "192.168.4.1", &addr.sin_addr); //<-- Change IP of ESP32/Destination 
+    void createSocket() {
+        sock = socket(AF_INET, SOCK_STREAM, 0);
+        if (sock == INVALID_SOCKET) {
+            throw std::runtime_error("Failed to create socket: " + std::to_string(WSAGetLastError()));
+        }
+    }
 
-	// Connect to the ESP32 board
-	if (connect(sock, (struct sockaddr*)&addr, sizeof(addr)) == SOCKET_ERROR) {
-		cout << "Failed to connect to ESP32 board: " << WSAGetLastError() << endl;
-		closesocket(sock);
-		WSACleanup();
-		return 1;
-	}
+    void setupAddress() {
+        addr.sin_family = AF_INET;
+        addr.sin_port = htons(ESP32_PORT);
+        if (inet_pton(AF_INET, ESP32_IP, &addr.sin_addr) <= 0) {
+            throw std::runtime_error("Invalid address / Address not supported");
+        }
+    }
 
-	// Send data to the ESP32 board
-	char raw[12]; // 3 integers, each 4 bytes
-	for (int i = 0; i < 3; i++) {
-		*((int*)(raw + i * 4)) = in[i];
-	}
-	if (send(sock, raw, 12, 0) == SOCKET_ERROR) {
-		cout << "Failed to send data to ESP32 board: " << WSAGetLastError() << endl;
-		closesocket(sock);
-		WSACleanup();
-		return 1;
-	}
+    void connectToESP32() {
+        if (connect(sock, (struct sockaddr*)&addr, sizeof(addr)) == SOCKET_ERROR) {
+            throw std::runtime_error("Failed to connect to ESP32 board: " + std::to_string(WSAGetLastError()));
+        }
+    }
 
-	// Close the socket
-	closesocket(sock);
-	WSACleanup();
+public:
+    WifiSender() : sock(INVALID_SOCKET) {
+        try {
+            initializeWinsock();
+            createSocket();
+            setupAddress();
+        }
+        catch (...) {
+            cleanup();
+            throw;
+        }
+    }
 
-	return 0;
-}
+    ~WifiSender() {
+        cleanup();
+    }
+
+    void send(const std::array<int, DATA_SIZE>& data) {
+        try {
+            connectToESP32();
+
+            std::array<char, DATA_SIZE * BYTES_PER_INT> raw;
+            for (int i = 0; i < DATA_SIZE; ++i) {
+                *reinterpret_cast<int*>(&raw[i * BYTES_PER_INT]) = data[i];
+            }
+
+            if (::send(sock, raw.data(), raw.size(), 0) == SOCKET_ERROR) {
+                throw std::runtime_error("Failed to send data to ESP32 board: " + std::to_string(WSAGetLastError()));
+            }
+
+            closesocket(sock);
+            createSocket();  // Prepare for the next connection
+        }
+        catch (...) {
+            closesocket(sock);
+            createSocket();  // Prepare for the next connection
+            throw;
+        }
+    }
+
+private:
+    void cleanup() {
+        if (sock != INVALID_SOCKET) {
+            closesocket(sock);
+        }
+        WSACleanup();
+    }
+};
+
+#endif // WIFI_SEND_H
